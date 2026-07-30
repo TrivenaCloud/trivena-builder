@@ -1,0 +1,91 @@
+@import "frappe-ui/style.css";
+
+@layer base {
+	ul,
+	ol {
+		list-style: revert;
+		padding: revert;
+	}
+}
+
+/* to match style of tip tap editor for new lines */
+p:empty::before {
+	content: "";
+	display: inline-block;
+}
+
+.__text_block__ {
+	overflow-wrap: break-word;
+}
+
+.__text_block__ a {
+	color: var(--link-color);
+	text-decoration: underline;
+	background-color: transparent;
+}
+
+@layer utilities {
+	/* Chrome, Safari and Opera */
+	.no-scrollbar::-webkit-scrollbar {
+		display: none;
+	}
+
+	.no-scrollbar {
+		-ms-overflow-style: none;
+		scrollbar-width: none;
+	}
+
+	.show-scrollbar::-webkit-scrollbar {
+		display: block;
+	}
+	.show-scrollbar {
+		-ms-overflow-style: auto;
+		scrollbar-width: auto;
+	}
+}
+
+*:not(.canvas, .canvas *) {
+	&::-webkit-scrollbar {
+		@apply w-2 h-2 bg-surface-gray-1;
+	}
+
+	&::-webkit-scrollbar-corner {
+		@apply bg-surface-gray-1;
+	}
+
+	&::-webkit-scrollbar-thumb {
+		@apply rounded-full bg-surface-gray-3;
+	}
+}
+
+[data-theme='dark'] img {
+	filter: revert;
+}
+
+[role='dialog'].bg-surface-elevation-2, [role='dialog'] .bg-surface-elevation-2 {
+	background-color: var(--surface-base);
+}
+
+/* surface-base resolves to dark-gray-950 (#171717); pin it to the deeper
+   gray-950 (#0f0f0f) in dark mode for a darker base/page background. */
+[data-theme='dark'] .bg-surface-base {
+	background-color: var(--gray-950);
+}
+
+[contenteditable=true]:focus-visible {
+	outline: 1px solid var(--outline-gray-4);
+	outline-offset: 3px;
+	border-radius: 2px;
+}
+
+/* frappe-ui popovers portal to <body> without a z-index; lift them above
+   DraggablePopup (z-20) so e.g. color pickers opened from within popups stay visible */
+.PopoverContent {
+	z-index: 30;
+}
+
+/* frappe-ui v1.0.0-beta.21 dimmed Switch labels to the shared InputLabel default
+   (ink-gray-5); restore the old emphasis since the label acts as the row title */
+div:has(> [role='switch']) label[data-slot='label'] {
+	@apply font-medium text-ink-gray-8;
+}

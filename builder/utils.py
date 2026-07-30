@@ -1,0 +1,782 @@
+import inspect
+import os
+import re
+import shutil
+import socket
+from dataclasses import dataclass
+from functools import wraps
+from os.path import join
+from urllib.parse import unquote, urlparse
+
+import frappe
+import yaml
+from frappe.model.document import Document
+from frappe.modules.import_file import import_file_by_path
+from frappe.utils import get_url
+from frappe.utils.safe_exec import (
+	SERVER_SCRIPT_FILE_PREFIX,
+	FrappeTransformer,
+	NamespaceDict,
+	get_python_builtins,
+	get_safe_globals,
+	is_safe_exec_enabled,
+	safe_exec,
+	safe_exec_flags,
+)
+from RestrictedPython import compile_restricted
+from RestrictedPython import safe_globals as restricted_safe_globals
+from werkzeug.routing import Rule
+
+
+def compact_json(obj) -> str:
+	return frappe.as_json(obj, indent=None, separators=(",", ":"))
+
+
+def has_page_permission(ptype: str = "write", message: str | None = None):
+	"""Decorator to check if user has the given permission on Builder Page.
+
+	Args:
+		ptype: Permission type — "read" or "write". Defaults to "write".
+		message: Custom error message to display if permission is denied.
+			 If not provided, a sensible default is used.
+	"""
+
+	def decorator(fn):
+		@wraps(fn)
+		def wrapper(*args, **kwargs):
+			if not frappe.has_permission("Builder Page", ptype=ptype):
+				default_message = (
+					frappe._("You do not have permission to modify pages")
+					if ptype == "write"
+					else frappe._("You do not have permission to read pages")
+				)
+				frappe.throw(message or default_message)
+			return fn(*args, **kwargs)
+
+		return wrapper
+
+	return decorator
+
+
+def has_page_write(message: str | None = None):
+	"""Decorator to check if user has write permission on Builder Page."""
+	return has_page_permission(ptype="write", message=message)
+
+
+def has_page_read(message: str | None = None):
+	"""Decorator to check if user has read permission on Builder Page."""
+	return has_page_permission(ptype="read", message=message)
+
+
+@dataclass
+class BlockDataKey:
+	key: str
+	property: str
+	type: str
+	comesFrom: str
+
+
+class VisibilityCondition:
+	key: str
+	comesFrom: str
+
+
+class Block:
+	blockId: str = ""
+	from typing import ClassVar
+
+	children: ClassVar[list["Block"]] = []
+	baseStyles: ClassVar[dict] = {}
+	mobileStyles: ClassVar[dict] = {}
+	tabletStyles: ClassVar[dict] = {}
+	attributes: ClassVar[dict] = {}
+	classes: ClassVar[list[str]] = []
+	dataKey: BlockDataKey | None = None
+	blockName: str | None = None
+	element: str | None = None
+	draggable: bool = False
+	innerText: str | None = None
+	innerHTML: str | None = None
+	extendedFromComponent: str | None = None
+	componentVersion: str | None = None
+	originalElement: str | None = None
+	isChildOfComponent: str | None = None
+	referenceBlockId: str | None = None
+	isRepeaterBlock: bool = False
+	visibilityCondition: str | VisibilityCondition | None = None
+	elementBeforeConversion: str | None = None
+	customAttributes: ClassVar[dict] = {}
+	dynamicValues: ClassVar[list[BlockDataKey]] = []
+	props: ClassVar[dict] = {}
+	clientScript: ClassVar[dict] = {}
+
+	def __init__(self, **kwargs) -> None:
+		legacy_client_script = kwargs.pop("blockClientScript", None)
+		if "clientScript" not in kwargs and legacy_client_script:
+			kwargs["clientScript"] = {"js": legacy_client_script}
+
+		for key, value in kwargs.items():
+			if key == "children":
+				value = [
+					b if isinstance(b, Block) else Block(**b) if b and isinstance(b, dict) else None
+					for b in (value or [])
+				]
+
+			setattr(self, key, value)
+
+	def set_dynamic_value(self, key: str, type: str, property: str, comesFrom: str = "dataScript"):
+		if not self.dynamicValues:
+			self.dynamicValues = []
+		for i, dv in enumerate(self.dynamicValues):
+			if dv["property"] == property and dv["type"] == type:
+				self.dynamicValues[i] = {
+					"key": key,
+					"type": type,
+					"property": property,
+					"comesFrom": comesFrom,
+				}
+				return
+		self.dynamicValues.append({"key": key, "type": type, "property": property, "comesFrom": comesFrom})
+
+	def clear_dynamic_values(self):
+		self.dynamicValues = []
+
+	def attach_data_key(self, key: str, property: str, type: str = "key", comesFrom: str = "dataScript"):
+		self.dataKey = {"key": key, "property": property, "type": type, "comesFrom": comesFrom}
+
+	def clear_data_key(self):
+		self.dataKey = None
+
+	def attach_children(self, *children: "Block"):
+		if not self.children:
+			self.children = []
+		self.children.extend(children)
+
+	def as_dict(self):
+		return {
+			"blockId": self.blockId,
+			"children": [child.as_dict() for child in self.children] if self.children else None,
+			"baseStyles": self.baseStyles,
+			"mobileStyles": self.mobileStyles,
+			"tabletStyles": self.tabletStyles,
+			"attributes": self.attributes,
+			"classes": self.classes,
+			"dataKey": self.dataKey,
+			"blockName": self.blockName,
+			"element": self.element,
+			"draggable": self.draggable,
+			"innerText": self.innerText,
+			"innerHTML": self.innerHTML,
+			"extendedFromComponent": self.extendedFromComponent,
+			"componentVersion": self.componentVersion,
+			"originalElement": self.originalElement,
+			"isChildOfComponent": self.isChildOfComponent,
+			"referenceBlockId": self.referenceBlockId,
+			"isRepeaterBlock": self.isRepeaterBlock,
+			"visibilityCondition": self.visibilityCondition,
+			"elementBeforeConversion": self.elementBeforeConversion,
+			"customAttributes": self.customAttributes,
+			"dynamicValues": self.dynamicValues,
+			"props": self.props,
+			"clientScript": self.clientScript,
+		}
+
+	def as_json(self, wrap_in_array=False):
+		return frappe.as_json([self.as_dict()]) if wrap_in_array else frappe.as_json(self.as_dict())
+
+
+def get_doc_as_dict(doctype, name):
+	assert isinstance(doctype, str)
+	assert isinstance(name, str)
+	return frappe.get_doc(doctype, name).as_dict()
+
+
+def get_cached_doc_as_dict(doctype, name):
+	assert isinstance(doctype, str)
+	assert isinstance(name, str)
+	return frappe.get_cached_doc(doctype, name).as_dict()
+
+
+def make_safe_get_request(url, **kwargs):
+	parsed = urlparse(url)
+	parsed_ip = socket.gethostbyname(parsed.hostname)
+	if parsed_ip.startswith(("127", "10", "192", "172")):
+		return
+
+	return frappe.integrations.utils.make_get_request(url, **kwargs)
+
+
+def safe_get_list(*args, **kwargs):
+	if args and len(args) > 1 and isinstance(args[1], list):
+		args = list(args)
+		args[1] = remove_unsafe_fields(args[1])
+
+	fields = kwargs.get("fields", [])
+	if fields:
+		kwargs["fields"] = remove_unsafe_fields(fields)
+
+	return frappe.db.get_list(
+		*args,
+		**kwargs,
+	)
+
+
+def safe_get_all(*args, **kwargs):
+	kwargs["ignore_permissions"] = True
+	if "limit_page_length" not in kwargs:
+		kwargs["limit_page_length"] = 0
+
+	return safe_get_list(*args, **kwargs)
+
+
+def remove_unsafe_fields(fields):
+	return [f for f in fields if "(" not in f]
+
+
+def get_safer_globals():
+	safe_globals = get_safe_globals()
+
+	form_dict = getattr(frappe.local, "form_dict", frappe._dict())
+
+	if "_" in form_dict:
+		del frappe.local.form_dict["_"]
+
+	out = NamespaceDict(
+		json=safe_globals["json"],
+		as_json=frappe.as_json,
+		dict=safe_globals["dict"],
+		args=form_dict,
+		frappe=NamespaceDict(
+			db=NamespaceDict(
+				count=frappe.db.count,
+				exists=frappe.db.exists,
+				get_all=safe_get_all,
+				get_list=safe_get_list,
+				get_single_value=frappe.db.get_single_value,
+			),
+			form_dict=form_dict,
+			make_get_request=make_safe_get_request,
+			get_doc=get_doc_as_dict,
+			get_cached_doc=get_cached_doc_as_dict,
+			_=frappe._,
+			session=safe_globals["frappe"]["session"],
+		),
+	)
+
+	out._write_ = safe_globals["_write_"]
+	out._getitem_ = safe_globals["_getitem_"]
+	out._getattr_ = safe_globals["_getattr_"]
+	out._getiter_ = safe_globals["_getiter_"]
+	out._iter_unpack_sequence_ = safe_globals["_iter_unpack_sequence_"]
+
+	# add common python builtins
+	out.update(restricted_safe_globals)
+	out.update(get_python_builtins())
+
+	return out
+
+
+def safer_exec(
+	script: str,
+	_globals: dict | None = None,
+	_locals: dict | None = None,
+	*,
+	script_filename: str | None = None,
+):
+	exec_globals = get_safer_globals()
+	if _globals:
+		exec_globals.update(_globals)
+
+	filename = SERVER_SCRIPT_FILE_PREFIX
+	if script_filename:
+		filename += f": {frappe.scrub(script_filename)}"
+
+	with safe_exec_flags():
+		# execute script compiled by RestrictedPython
+		exec(
+			compile_restricted(script, filename=filename, policy=FrappeTransformer),
+			exec_globals,
+			_locals,
+		)
+
+	return exec_globals, _locals
+
+
+def sync_page_templates():
+	print("Syncing Builder Components")
+	builder_component_path = frappe.get_module_path("builder", "builder_component")
+	make_records(builder_component_path)
+
+	print("Syncing Builder Scripts")
+	builder_script_path = frappe.get_module_path("builder", "builder_script")
+	make_records(builder_script_path)
+
+
+def sync_block_templates():
+	print("Syncing Builder Block Templates")
+	builder_block_template_path = frappe.get_module_path("builder", "builder_block_template")
+	make_records(builder_block_template_path)
+
+
+def sync_builder_variables():
+	print("Syncing Builder Builder Variables")
+	builder_variable_path = frappe.get_module_path("builder", "builder_variable")
+	make_records(builder_variable_path)
+
+
+def make_records(path):
+	if not os.path.isdir(path):
+		return
+	for fname in os.listdir(path):
+		if os.path.isdir(join(path, fname)) and fname != "__pycache__":
+			import_file_by_path(f"{path}/{fname}/{fname}.json")
+
+
+def copy_img_to_asset_folder(block, page_doc, app=None):
+	def safe_get(obj, attr, default=None):
+		if isinstance(obj, dict):
+			return obj.get(attr, default)
+		else:
+			return getattr(obj, attr, default)
+
+	if isinstance(block, dict):
+		block = frappe._dict(block)
+		children = block.get("children", [])
+		if children and isinstance(children, list):
+			block.children = [frappe._dict(child) if isinstance(child, dict) else child for child in children]
+
+	element = safe_get(block, "element")
+
+	if element == "img":
+		attributes = safe_get(block, "attributes")
+		src = None
+
+		if attributes:
+			src = safe_get(attributes, "src")
+
+		site_url = get_url()
+
+		if src and (src.startswith(f"{site_url}/files") or src.startswith("/files")):
+			if src.startswith(f"{site_url}/files"):
+				src = src.split(f"{site_url}")[1]
+			src = unquote(src)
+			files = frappe.get_all("File", filters={"file_url": src}, fields=["name"])
+			if files:
+				_file = frappe.get_doc("File", files[0].name)
+				assets_folder_path = get_template_assets_folder_path(page_doc, app=app)
+				shutil.copy(_file.get_full_path(), assets_folder_path)
+
+			new_src = f"{get_template_assets_public_path(page_doc)}/{src.split('/')[-1]}"
+			if attributes:
+				if isinstance(attributes, dict):
+					attributes["src"] = new_src
+				else:
+					attributes.src = new_src
+
+	children = safe_get(block, "children", [])
+	for child in children or []:
+		copy_img_to_asset_folder(child, page_doc, app=app)
+
+
+def get_template_assets_subfolder(page_doc):
+	"""Relative folder under www/builder_assets for a page's exported assets.
+
+	Template-group pages are namespaced under their group folder so multiple
+	templates can ship assets without colliding."""
+	if getattr(page_doc, "is_template", None) and getattr(page_doc, "template_group", None):
+		return os.path.join(frappe.scrub(page_doc.template_group), str(page_doc.name))
+	return str(page_doc.name)
+
+
+def get_template_assets_public_path(page_doc):
+	"""Public URL prefix (no trailing slash) for a page's exported assets.
+
+	App-agnostic: whichever app/site serves the assets does so under
+	/builder_assets/, so only the filesystem write root (below) varies by app."""
+	return f"/builder_assets/{get_template_assets_subfolder(page_doc).replace(os.sep, '/')}"
+
+
+def template_target_app():
+	"""App whose www/builder_assets directory holds exported template assets.
+	Defaults to builder; the hub site sets template_target_app=builder_hub so
+	template authoring on the hub writes assets into the hub app."""
+	return frappe.conf.get("template_target_app") or "builder"
+
+
+def get_template_assets_folder_path(page_doc, app=None):
+	path = os.path.join(
+		frappe.get_app_path(app or template_target_app()),
+		"www",
+		"builder_assets",
+		get_template_assets_subfolder(page_doc),
+	)
+	if not os.path.exists(path):
+		os.makedirs(path)
+	return path
+
+
+def get_builder_page_preview_file_paths(page_doc, app=None):
+	public_path, local_path = None, None
+	if page_doc.is_template:
+		local_path = os.path.join(get_template_assets_folder_path(page_doc, app=app), "preview.webp")
+		public_path = f"{get_template_assets_public_path(page_doc)}/preview.webp"
+	else:
+		file_name = f"{page_doc.name}-preview.webp"
+		local_path = os.path.join(frappe.local.site_path, "public", "files", file_name)
+		random_hash = frappe.generate_hash(length=5)
+		public_path = f"/files/{file_name}?v={random_hash}"
+	return public_path, local_path
+
+
+def is_component_used(blocks, component_id):
+	blocks = frappe.parse_json(blocks)
+	if not isinstance(blocks, list):
+		blocks = [blocks]
+
+	for block in blocks:
+		if not block:
+			continue
+		if block.get("extendedFromComponent") == component_id:
+			return True
+		if block.get("children") and is_component_used(block.get("children"), component_id):
+			return True
+
+	return False
+
+
+def escape_single_quotes(text):
+	return (text or "").replace("'", "\\'")
+
+
+def camel_case_to_kebab_case(text, remove_spaces=False):
+	# Used to convert camelCase css properties to kebab-case, e.g. backgroundColor → background-color
+	if not text:
+		return ""
+	text = re.sub(r"(?<!^)(?=[A-Z])", "-", text).lower()
+	# Add leading hyphen for vendor-prefixed CSS properties
+	# e.g. WebkitBackgroundClip → -webkit-background-clip
+	if re.match(r"^(webkit|moz|ms|o)-", text):
+		text = f"-{text}"
+	if remove_spaces:
+		text = text.replace(" ", "")
+	return text
+
+
+def kebab_to_camel_case(text):
+	return re.sub(r"-([a-z])", lambda match: match.group(1).upper(), text)
+
+
+def normalize_legacy_style_key(style):
+	if ":" not in style:
+		return kebab_to_camel_case(style)
+	state, property_name = style.split(":", 1)
+	return f"{state}:{kebab_to_camel_case(property_name)}"
+
+
+def merge_raw_styles_into_base_styles(block):
+	raw_styles = block.pop("rawStyles", None)
+	if not raw_styles:
+		return
+	base_styles = block.setdefault("baseStyles", {})
+	for style, value in raw_styles.items():
+		if value in (None, ""):
+			continue
+		base_styles[normalize_legacy_style_key(style)] = value
+
+
+def normalize_legacy_raw_styles(blocks):
+	# rawStyles were dropped in favour of baseStyles; older blocks still carry them
+	if isinstance(blocks, list):
+		for block in blocks:
+			normalize_legacy_raw_styles(block)
+	elif isinstance(blocks, dict):
+		merge_raw_styles_into_base_styles(blocks)
+		normalize_legacy_raw_styles(blocks.get("children") or [])
+	return blocks
+
+
+def sanitize_style_value(value):
+	if not isinstance(value, str):
+		return value
+	if value.count("(") != value.count(")"):
+		value = value.replace("(", "\\(").replace(")", "\\)")
+	if value.count("'") % 2 != 0:
+		value = value.replace("'", "\\'")
+	if value.count('"') % 2 != 0:
+		value = value.replace('"', '\\"')
+	return value
+
+
+def execute_script(script, _locals, script_filename):
+	if is_safe_exec_enabled():
+		safe_exec(script, None, _locals, script_filename=script_filename)
+	else:
+		safer_exec(script, None, _locals, script_filename=script_filename)
+
+
+def clean_data(data):
+	if isinstance(data, dict):
+		return {
+			k: clean_data(v)
+			for k, v in data.items()
+			if not inspect.isbuiltin(v) and not inspect.isfunction(v) and not inspect.ismethod(v)
+		}
+	elif isinstance(data, list):
+		return [clean_data(i) for i in data]
+	return data
+
+
+class ColonRule(Rule):
+	def __init__(self, string, *args, **kwargs):
+		# Replace ':name' with '<name>' so Werkzeug can process it
+		string = self.convert_colon_to_brackets(string)
+		super().__init__(string, *args, **kwargs)
+
+	@staticmethod
+	def convert_colon_to_brackets(string):
+		return re.sub(r":([a-zA-Z0-9_-]+)", r"<\1>", string)
+
+
+def add_composite_index_to_web_page_view():
+	"""
+	Add a composite index to the Web Page View table.
+	This is used to speed up queries that filter by creation, is_unique, and path.
+	"""
+	frappe.db.add_index("Web Page View", ["creation", "is_unique", "path"])
+
+
+def split_styles(styles):
+	if not styles:
+		return {"regular": {}, "state": {}}
+
+	return {
+		"regular": {k: v for k, v in styles.items() if ":" not in k},
+		"state": {k: v for k, v in styles.items() if ":" in k},
+	}
+
+
+def copy_assets_from_blocks(blocks, assets_path, target_app="builder"):
+	if not isinstance(blocks, list):
+		blocks = [blocks]
+
+	for block in blocks:
+		if isinstance(block, dict):
+			process_block_assets(block, assets_path, target_app)
+			children = block.get("children")
+			if children and isinstance(children, list):
+				copy_assets_from_blocks(children, assets_path, target_app)
+
+
+def process_block_assets(block, assets_path, target_app="builder"):
+	"""Process assets for a single block"""
+	if block.get("element") in ("img", "video"):
+		src = block.get("attributes", {}).get("src")
+		if src:
+			new_location = copy_asset_file(src, assets_path, target_app)
+			if new_location:
+				block["attributes"]["src"] = new_location
+
+
+def copy_asset_file(file_url, assets_path, target_app="builder"):
+	"""Copy a file from the source to assets directory and return new public path"""
+	if not file_url or not isinstance(file_url, str):
+		return None
+
+	try:
+		if file_url.startswith("/files/"):
+			return copy_from_site_files(file_url, assets_path, target_app)
+		elif file_url.startswith("/builder_assets/") or (
+			file_url.startswith("/assets/") and "/builder_assets/" in file_url
+		):
+			return copy_from_builder_assets(file_url, assets_path, target_app)
+	except Exception as e:
+		frappe.log_error(f"Failed to copy asset {file_url}: {e!s}")
+	return None
+
+
+def copy_from_site_files(file_url, assets_path, target_app="builder"):
+	"""Copy file from site files directory"""
+	source_path = os.path.join(frappe.local.site_path, "public", file_url.lstrip("/"))
+	if os.path.exists(source_path):
+		return copy_file_to_assets(source_path, file_url, assets_path, target_app)
+	return None
+
+
+def copy_from_builder_assets(file_url, assets_path, target_app="builder"):
+	"""Copy file from builder assets directory"""
+	if file_url.startswith("/assets/") and "/builder_assets/" in file_url:
+		parts = file_url.split("/")
+		if len(parts) >= 3:
+			app_name = parts[2]
+			source_path = os.path.join(frappe.get_app_path(app_name), "public", "/".join(parts[3:]))
+	else:
+		source_path = os.path.join(frappe.get_app_path("builder"), "www", file_url.lstrip("/"))
+	if os.path.exists(source_path):
+		return copy_file_to_assets(source_path, file_url, assets_path, target_app)
+	return None
+
+
+def copy_file_to_assets(source_path, file_url, assets_path, target_app="builder"):
+	"""Copy file to assets directory and return public path"""
+	filename = os.path.basename(file_url)
+	dest_path = os.path.join(assets_path, filename)
+	shutil.copy2(source_path, dest_path)
+	return f"/assets/{target_app}/builder_assets/{filename}"
+
+
+def extract_components_from_blocks(blocks):
+	"""Extract component IDs from blocks recursively"""
+	components = set()
+	if not isinstance(blocks, list):
+		blocks = [blocks]
+
+	for block in blocks:
+		if isinstance(block, dict):
+			if block.get("extendedFromComponent"):
+				component_doc = frappe.get_cached_doc("Builder Component", block["extendedFromComponent"])
+				if component_doc:
+					components.update(
+						extract_components_from_blocks(frappe.parse_json(component_doc.block or "{}"))
+					)
+				components.add(block["extendedFromComponent"])
+			children = block.get("children")
+			if children and isinstance(children, list):
+				components.update(extract_components_from_blocks(children))
+
+	return components
+
+
+def export_client_scripts(page_doc, client_scripts_path):
+	"""Export client scripts for a page"""
+	from frappe.modules.export_file import strip_default_fields
+
+	for script_row in page_doc.client_scripts:
+		script_doc = frappe.get_doc("Builder Client Script", script_row.builder_script)
+		script_config = script_doc.as_dict(no_nulls=True)
+		script_config = strip_default_fields(script_doc, script_config)
+		fname = frappe.scrub(str(script_doc.name))
+		# ensure the target directory exists before writing the file
+		script_dir = os.path.join(client_scripts_path, fname)
+		os.makedirs(script_dir, exist_ok=True)
+		script_file_path = os.path.join(script_dir, f"{fname}.json")
+
+		with open(script_file_path, "w", encoding="utf-8") as f:
+			f.write(frappe.as_json(script_config, ensure_ascii=False))
+
+
+def export_components(components, components_path, assets_path, target_app="builder"):
+	"""Export components to files"""
+	for component_id in components:
+		try:
+			component_doc = frappe.get_doc("Builder Component", component_id)
+			# replace assets in component blocks
+			component_blocks = frappe.parse_json(component_doc.block or "[]")
+			copy_assets_from_blocks(component_blocks, assets_path, target_app)
+			component_doc.block = frappe.as_json(component_blocks)
+
+			# Replace forward slashes with underscores to create valid directory names
+			safe_component_name = frappe.scrub(component_doc.component_name).replace("/", "_")
+			component_dir = os.path.join(components_path, safe_component_name)
+			os.makedirs(component_dir, exist_ok=True)
+			component_file_path = os.path.join(component_dir, f"{safe_component_name}.json")
+
+			with open(component_file_path, "w") as f:
+				f.write(frappe.as_json(component_doc.as_dict()))
+		except Exception as e:
+			print(e)
+			frappe.log_error(f"Failed to export component {component_id}: {e!s}")
+
+
+def create_export_directories(app_path, export_name):
+	paths = get_export_paths(app_path, export_name)
+	for path in paths.values():
+		os.makedirs(path, exist_ok=True)
+
+	return paths
+
+
+def get_export_paths(app_path, export_name):
+	"""Get all export directory paths"""
+	builder_files_path = os.path.join(app_path, "builder_files")
+	pages_path = os.path.join(builder_files_path, "pages")
+	public_builder_files_path = os.path.join(app_path, "public", "builder_assets")
+
+	return {
+		"page_path": os.path.join(pages_path, export_name),
+		"assets_path": public_builder_files_path,
+		"client_scripts_path": os.path.join(builder_files_path, "client_scripts"),
+		"components_path": os.path.join(builder_files_path, "components"),
+		"builder_files_path": builder_files_path,
+		"pages_path": pages_path,
+	}
+
+
+def to_dict_with_fallback(obj):
+	try:
+		return frappe._dict(obj)
+	except TypeError:
+		if isinstance(obj, Document):
+			return obj.as_dict()
+		else:
+			raise
+
+
+def combine(a, b):
+	if a is None:
+		return b
+	if b is None:
+		return a
+	res = to_dict_with_fallback(a)
+	res.update(to_dict_with_fallback(b))
+	return res
+
+
+def hash(s):
+	return f"{frappe.generate_hash(length=6)}-{s}"
+
+
+def to_safe_json(data):
+	return frappe.as_json(data or {}).replace("</", r"<\/")
+
+
+class CompactDumper(yaml.Dumper):
+	"""Minimal-whitespace YAML dumper.
+
+	Two optimizations over the default Dumper:
+	1. indentless=True — removes the extra 2-space indent on list items inside
+	   mappings, which compounds in deeply nested block trees.
+	2. Flow style for flat dicts — turns multi-line style blocks into single-line
+	   {k: v, k: v} inline mappings, saving ~60% of style-dict tokens.
+	"""
+
+	def increase_indent(self, flow=False, indentless=False):
+		return super().increase_indent(flow=flow, indentless=True)
+
+	def represent_mapping(self, tag, mapping, flow_style=None):
+		# Use flow style {k: v} only for flat dicts (no nested dicts or lists)
+		if flow_style is None:
+			flow_style = all(not isinstance(v, (dict, list)) for v in mapping.values())
+		return super().represent_mapping(tag, mapping, flow_style=flow_style)
+
+
+def _str_representer(dumper, data):
+	"""Use plain scalars where safe; single-quote only when the value contains
+	characters that would confuse the YAML parser."""
+	if any(c in data for c in (":", "{", "}", "[", "]", "#", "&", "*", "!", "|", ">", "'", '"', "\n")):
+		return dumper.represent_scalar("tag:yaml.org,2002:str", data, style="'")
+	return dumper.represent_scalar("tag:yaml.org,2002:str", data)
+
+
+CompactDumper.add_representer(str, _str_representer)
+
+
+def to_compact_yaml(data) -> str:
+	"""Serialize data to minimal YAML for LLM context."""
+	return yaml.dump(
+		data,
+		Dumper=CompactDumper,
+		sort_keys=False,
+		default_flow_style=False,
+		allow_unicode=True,
+		width=1000,  # prevent wrapping long values mid-token
+	)

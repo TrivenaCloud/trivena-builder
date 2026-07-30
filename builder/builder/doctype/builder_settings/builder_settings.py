@@ -1,0 +1,132 @@
+import os
+
+import frappe
+from frappe import _
+from frappe.model.document import Document
+from frappe.utils import get_files_path
+from frappe.utils.caching import redis_cache
+from frappe.website.utils import clear_cache
+
+from builder.utils import has_page_read, has_page_write
+
+
+class BuilderSettings(Document):
+	# begin: auto-generated types
+	# This code is auto-generated. Do not modify anything in this block.
+
+	from typing import TYPE_CHECKING
+
+	if TYPE_CHECKING:
+		from frappe.types import DF
+
+		auto_convert_images_to_webp: DF.Check
+		body_html: DF.Code | None
+		default_language: DF.Data | None
+		disable_auto_dark_mode: DF.Check
+		execute_block_scripts_in_editor: DF.Literal["Don't Execute", "Restricted", "Unrestricted"]
+		favicon: DF.AttachImage | None
+		head_html: DF.Code | None
+		home_page: DF.Data | None
+		restrict_click_handlers: DF.Check
+		script: DF.Code | None
+		script_public_url: DF.ReadOnly | None
+		style: DF.Code | None
+		style_public_url: DF.ReadOnly | None
+	# end: auto-generated types
+
+	def on_update(self):
+		self.handle_script_update("script", "JavaScript", "js", "page_scripts")
+		self.handle_script_update("style", "css", "css", "page_styles")
+		if self.has_value_changed("home_page"):
+			frappe.cache.delete_key("home_page")
+		if self.has_value_changed("disable_auto_dark_mode"):
+			# Clear cache for all pages since this is a global setting
+			clear_cache()
+
+	def handle_script_update(self, attribute, script_type, extension, folder_name):
+		if self.has_value_changed(attribute):
+			if getattr(self, attribute):
+				self.update_script_file(attribute, script_type, extension, folder_name)
+			else:
+				self.delete_script_file(attribute, extension, folder_name)
+
+	def update_script_file(self, attribute, script_type, extension, folder_name):
+		script = self.script if script_type == "JavaScript" else self.style
+		file_name = f"builder-asset-{attribute}.{extension}"
+		file_path = self.get_file_path(file_name, folder_name)
+		self.write_to_file(file_path, script)
+		public_url = f"/files/{folder_name}/{file_name}?v={frappe.generate_hash(length=10)}"
+		self.db_set(f"{attribute}_public_url", public_url, commit=True)
+
+	def delete_script_file(self, script_type, extension, folder_name):
+		file_name = f"builder-asset-{script_type}.{extension}"
+		file_path = self.get_file_path(file_name, folder_name)
+		if os.path.exists(file_path):
+			os.remove(file_path)
+		self.db_set(f"{script_type.lower()}_public_url", "", commit=True)
+
+	def get_file_path(self, file_name, folder_name):
+		file_path = get_files_path(f"{folder_name}/{file_name}")
+		os.makedirs(os.path.dirname(file_path), exist_ok=True)
+		return file_path
+
+	def write_to_file(self, file_path, content):
+		with open(file_path, "w") as f:
+			f.write(content)
+
+
+def get_website_user_home_page(session_user=None):
+	home_page = frappe.get_cached_value("Builder Settings", None, "home_page")
+	return home_page
+
+
+@frappe.whitelist()
+@has_page_read()
+def get_components():
+	# in label value format
+	return frappe.get_all("Builder Component", fields=["name as value", "component_name as label"])
+
+
+@frappe.whitelist()
+@has_page_write("You don't have permission to access this component")
+def replace_component(target_component: str, replace_with: str, filters: str | None = None):
+	if not target_component or not replace_with:
+		return
+
+	# check if the replace_with component exists
+	if not frappe.db.exists("Builder Component", replace_with):
+		frappe.throw(_("The component you are trying to replace with does not exist"))
+
+	# go through all the pages and replace the old component with the new component
+	pages = frappe.get_all(
+		"Builder Page",
+		fields=["name"],
+		filters=frappe.parse_json(filters) if filters else {},
+		or_filters={
+			"blocks": ["like", f"%{target_component}%"],
+			"draft_blocks": ["like", f"%{target_component}%"],
+		},
+	)
+	for page in pages:
+		doc = frappe.get_doc("Builder Page", page.name)
+		doc.replace_component(target_component, replace_with)
+
+
+@frappe.whitelist()
+@redis_cache()
+def get_component_usage_count(component_id: str, filters: str | None = None):
+	if not frappe.has_permission("Builder Page", ptype="read"):
+		return {"count": 0, "pages": []}
+	pages = frappe.get_all(
+		"Builder Page",
+		filters=frappe.parse_json(filters) if filters else {},
+		fields=["name", "page_title", "route", "preview"],
+		or_filters={
+			"blocks": ["like", f"%{component_id}%"],
+			"draft_blocks": ["like", f"%{component_id}%"],
+		},
+	)
+	return {
+		"count": len(pages),
+		"pages": pages,
+	}

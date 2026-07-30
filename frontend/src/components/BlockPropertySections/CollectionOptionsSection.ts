@@ -1,0 +1,127 @@
+import Autocomplete from "@/components/Controls/Autocomplete.vue";
+import useCanvasStore from "@/stores/canvasStore";
+import usePageStore from "@/stores/pageStore";
+import blockController from "@/utils/blockController";
+import componentController from "@/utils/componentController";
+import { getRepeaterScopedData } from "@/utils/helpers";
+import { computed, h } from "vue";
+
+const keyOptions = computed(() => {
+	const pageStore = usePageStore();
+	const canvasStore = useCanvasStore();
+
+	let result: { label: string; value: string; prefix: any }[] = [];
+
+	const repeatablePageDataKeys: string[] = [];
+	const repeatableComponentDataKeys: string[] = [];
+
+	const pageDataCollectionObject =
+		canvasStore.editingMode == "fragment"
+			? {}
+			: getRepeaterScopedData(blockController.getFirstSelectedBlock(), pageStore.pageData);
+
+	let componentData = {};
+	if (canvasStore.editingMode == "fragment") {
+		componentData = componentController.getComponentDataPreview();
+	}
+
+	const componentDataCollectionObject = getRepeaterScopedData(
+		blockController.getFirstSelectedBlock(),
+		componentData,
+	);
+
+	const isInsideRepeater = blockController.getFirstSelectedBlock()?.isInsideRepeater();
+	const repeaterDataKeyComesFrom: BlockDataKey["comesFrom"] | undefined = blockController
+		.getFirstSelectedBlock()
+		?.getRepeaterParent()
+		?.getDataKey("comesFrom") as BlockDataKey["comesFrom"] | undefined;
+
+	function processObject(obj: Record<string, any>, prefix = "", resultArray: string[] = []) {
+		if (!obj || typeof obj !== "object") {
+			return;
+		}
+
+		Object.entries(obj).forEach(([key, value]) => {
+			const path = prefix ? `${prefix}.${key}` : key;
+
+			if (Array.isArray(value)) {
+				resultArray.push(path);
+			} else if (typeof value === "object" && value !== null) {
+				processObject(value, path, resultArray);
+			}
+		});
+	}
+
+	processObject(pageDataCollectionObject, "", repeatablePageDataKeys);
+	processObject(componentDataCollectionObject, "", repeatableComponentDataKeys);
+
+	const isPropsBasedRepeater = isInsideRepeater && repeaterDataKeyComesFrom == "props";
+	const repeatableProps: string[] = [];
+
+	const propsOfComponentRoot = blockController.getFirstSelectedBlock()?.getComponentRoot()?.getBlockProps();
+
+	if (propsOfComponentRoot && !isPropsBasedRepeater) {
+		Object.entries(propsOfComponentRoot).forEach(([key, value]) => {
+			if (value.isStandard && (value.propOptions?.type == "array" || value.propOptions?.type == "object")) {
+				repeatableProps.push(key);
+			}
+		});
+	}
+
+	repeatablePageDataKeys.forEach((item) => {
+		result.push({
+			label: item,
+			value: `${item}--dataScript`,
+			prefix: h("span", { class: "lucide-zap size-3", "aria-hidden": "true" }),
+		});
+	});
+	repeatableComponentDataKeys.forEach((item) => {
+		result.push({
+			label: item,
+			value: `${item}--componentData`,
+			prefix: h("span", { class: "lucide-zap size-3", "aria-hidden": "true" }),
+		});
+	});
+	repeatableProps.forEach((prop) => {
+		result.push({
+			label: prop,
+			value: `${prop}--props`,
+			prefix: h("span", { class: "lucide-git-commit size-3", "aria-hidden": "true" }),
+		});
+	});
+
+	return result;
+});
+
+const collectionOptions = [
+	{
+		component: Autocomplete,
+		getProps: () => {
+			return {
+				label: "Key",
+				modelValue: blockController.getDataKey("key"),
+				placeholder: "Select a collection",
+				options: keyOptions.value,
+			};
+		},
+		searchKeyWords: "Collection, Repeater, Dynamic Collection, Dynamic Repeater",
+		events: {
+			"update:modelValue": (selectedOption: string) => {
+				if (!selectedOption) {
+					blockController.setDataKey("key", null);
+					return;
+				}
+				let value = selectedOption.split("--").slice(0, -1).join("--");
+				let comesFrom = selectedOption.split("--").slice(-1)[0] as BlockDataKey["comesFrom"];
+				blockController.setDataKey("key", value);
+				blockController.setDataKey("comesFrom", comesFrom);
+			},
+		},
+	},
+];
+
+export default {
+	name: "Collection",
+	properties: collectionOptions,
+	condition: () => blockController.isRepeater(),
+};

@@ -1,0 +1,85 @@
+<template>
+	<router-link :to="{ name: 'builder', params: { pageId: page.page_name } }" class="group block h-fit w-full">
+		<div
+			class="group relative flex w-full justify-between overflow-hidden rounded-2xl p-3 hover:cursor-pointer hover:bg-surface-gray-1"
+			:class="{
+				'bg-surface-gray-2': selected,
+			}">
+			<div class="flex w-[85%] gap-3">
+				<img
+					width="140"
+					height="82"
+					:src="page.meta_image || page.preview"
+					onerror="this.src='/assets/builder/images/fallback.png'"
+					class="block aspect-video w-36 flex-shrink-0 overflow-hidden rounded-lg bg-surface-gray-1 object-cover shadow-md" />
+				<div class="flex flex-1 items-start justify-between overflow-hidden">
+					<span class="flex h-full w-full flex-col justify-between text-base">
+						<div>
+							<div class="flex items-center gap-1">
+								<p class="truncate font-medium text-ink-gray-9" :title="page.page_title || page.page_name">
+									{{ page.page_title || page.page_name }}
+								</p>
+							</div>
+							<div class="mt-2 flex items-center gap-2 text-ink-gray-6">
+								<div v-show="page.published">
+									<span
+										title="Limited access"
+										class="lucide-shield-user size-4 text-ink-amber-6"
+										v-if="page.authenticated_access" />
+									<span class="lucide-globe size-4" title="Publicly accessible" v-else />
+								</div>
+								<p class="max-w-[90%] truncate text-sm">
+									{{ page.route }}
+								</p>
+							</div>
+						</div>
+						<div class="flex items-baseline gap-2 text-ink-gray-6">
+							<UseTimeAgo v-slot="{ timeAgo }" :time="page.modified">
+								<p class="mt-1 block text-sm">Last updated {{ timeAgo }} by {{ modifiedBy.fullname }}</p>
+							</UseTimeAgo>
+						</div>
+					</span>
+				</div>
+			</div>
+			<div class="flex gap-2">
+				<Badge theme="green" v-if="page.published" class="dark:bg-green-900 dark:text-green-400">
+					Published
+				</Badge>
+				<Avatar
+					:shape="'circle'"
+					:image="owner.image"
+					:label="owner.fullname"
+					class="[&>div]:bg-surface-gray-2 [&>div]:text-ink-gray-4 [&>div]:group-hover:bg-surface-gray-4 [&>div]:group-hover:text-ink-gray-6"
+					size="sm"
+					:title="`Created by ${owner.fullname}`" />
+				<PageActionsDropdown :page="page" size="sm" placement="right">
+					<template v-slot="{ open }">
+						<span
+							class="lucide-more-horizontal h-4 w-4 font-bold text-ink-gray-6"
+							aria-hidden="true"
+							@click="open" />
+					</template>
+				</PageActionsDropdown>
+			</div>
+		</div>
+		<div class="mx-4 border-b border-outline-gray-1 group-last:hidden"></div>
+	</router-link>
+</template>
+<script setup lang="ts">
+import PageActionsDropdown from "@/components/PageActionsDropdown.vue";
+import usePageStore from "@/stores/pageStore";
+import { BuilderPage } from "@/types/doctypes";
+import { getUserInfo } from "@/usersInfo";
+import { UseTimeAgo } from "@vueuse/components";
+import { Avatar, Badge } from "frappe-ui";
+
+const pageStore = usePageStore();
+
+const props = defineProps<{
+	page: BuilderPage;
+	selected: boolean;
+}>();
+
+const modifiedBy = getUserInfo(props.page.modified_by);
+const owner = getUserInfo(props.page.owner);
+</script>

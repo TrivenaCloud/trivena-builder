@@ -1,0 +1,303 @@
+{
+ "actions": [],
+ "allow_bulk_edit": 1,
+ "allow_guest_to_view": 1,
+ "allow_rename": 1,
+ "autoname": "field:page_name",
+ "creation": "2023-01-09 15:20:33.274204",
+ "default_view": "List",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "content_tab",
+  "published",
+  "page_name",
+  "route",
+  "dynamic_route",
+  "published_at",
+  "column_break_ymjg",
+  "is_standard",
+  "is_template",
+  "template_group",
+  "app",
+  "section_break_ujsp",
+  "blocks",
+  "draft_blocks",
+  "scripting_tab",
+  "page_data_script",
+  "head_html",
+  "body_html",
+  "client_scripts",
+  "settings_tab",
+  "section_break_shab",
+  "preview",
+  "favicon",
+  "section_break_uqpw",
+  "meta_column",
+  "page_title",
+  "meta_description",
+  "meta_image",
+  "canonical_url",
+  "language",
+  "set_meta_tags",
+  "options_tab",
+  "authenticated_access",
+  "disable_indexing",
+  "project_folder"
+ ],
+ "fields": [
+  {
+   "fieldname": "page_name",
+   "fieldtype": "Data",
+   "in_standard_filter": 1,
+   "label": "Page Name",
+   "unique": 1
+  },
+  {
+   "fieldname": "route",
+   "fieldtype": "Data",
+   "ignore_xss_filter": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Route",
+   "search_index": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "published",
+   "fieldtype": "Check",
+   "in_list_view": 1,
+   "label": "Published"
+  },
+  {
+   "fieldname": "blocks",
+   "fieldtype": "Long Text",
+   "label": "Blocks",
+   "read_only": 1
+  },
+  {
+   "fieldname": "preview",
+   "fieldtype": "Data",
+   "label": "Page Preview",
+   "options": "URL",
+   "read_only": 1
+  },
+  {
+   "fieldname": "page_title",
+   "fieldtype": "Data",
+   "label": "Title",
+   "search_index": 1
+  },
+  {
+   "fieldname": "scripting_tab",
+   "fieldtype": "Tab Break",
+   "label": "Scripting"
+  },
+  {
+   "description": "data.events = frappe.get_list(\"Event\")\n<br>\n<b>Note:</b> Each key value of data should be a list.",
+   "fieldname": "page_data_script",
+   "fieldtype": "Code",
+   "label": "Page Data Script",
+   "options": "Python"
+  },
+  {
+   "fieldname": "content_tab",
+   "fieldtype": "Tab Break",
+   "label": "Content"
+  },
+  {
+   "default": "0",
+   "description": "Map route parameters into form variables. Example <code>/profile/:user</code>",
+   "fieldname": "dynamic_route",
+   "fieldtype": "Check",
+   "label": "Dynamic Route"
+  },
+  {
+   "fieldname": "section_break_ujsp",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "draft_blocks",
+   "fieldtype": "Long Text",
+   "label": "Draft Blocks",
+   "read_only": 1
+  },
+  {
+   "fieldname": "settings_tab",
+   "fieldtype": "Tab Break",
+   "label": "Meta"
+  },
+  {
+   "fieldname": "meta_column",
+   "fieldtype": "Column Break",
+   "label": "Meta Tags"
+  },
+  {
+   "fieldname": "meta_image",
+   "fieldtype": "Attach Image",
+   "label": "Image"
+  },
+  {
+   "fieldname": "set_meta_tags",
+   "fieldtype": "Button",
+   "label": "Add Custom Meta Tags"
+  },
+  {
+   "fieldname": "meta_description",
+   "fieldtype": "Small Text",
+   "label": "Description"
+  },
+  {
+   "description": "The preferred URL version of this page for search engines. If not set, the current page URL will be used.",
+   "fieldname": "canonical_url",
+   "fieldtype": "Data",
+   "label": "Canonical URL",
+   "options": "URL"
+  },
+  {
+   "description": "Language code for HTML (e.g., en, es, fr, de). Uses default if unset.",
+   "fieldname": "language",
+   "fieldtype": "Data",
+   "label": "Language"
+  },
+  {
+   "fieldname": "client_scripts",
+   "fieldtype": "Table MultiSelect",
+   "label": "Client Scripts",
+   "options": "Builder Page Client Script"
+  },
+  {
+   "default": "0",
+   "fieldname": "is_template",
+   "fieldtype": "Check",
+   "label": "Is Template",
+   "no_copy": 1
+  },
+  {
+   "depends_on": "is_template",
+   "fieldname": "template_group",
+   "fieldtype": "Data",
+   "label": "Template Group",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "section_break_shab",
+   "fieldtype": "Section Break"
+  },
+  {
+   "description": "An icon file with .ico extension. Should be 16 x 16 px.\nYou can generate using favicon-generator.org",
+   "fieldname": "favicon",
+   "fieldtype": "Attach Image",
+   "label": "Favicon"
+  },
+  {
+   "fieldname": "section_break_uqpw",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "column_break_ymjg",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "options_tab",
+   "fieldtype": "Tab Break",
+   "label": "Options"
+  },
+  {
+   "default": "0",
+   "description": "Only allow logged-in users to view this page.",
+   "fieldname": "authenticated_access",
+   "fieldtype": "Check",
+   "label": "Authenticated Access"
+  },
+  {
+   "default": "0",
+   "description": "Prevent search engines from indexing this page",
+   "fieldname": "disable_indexing",
+   "fieldtype": "Check",
+   "label": "Disable Indexing"
+  },
+  {
+   "fieldname": "project_folder",
+   "fieldtype": "Link",
+   "label": "Project Folder",
+   "options": "Builder Project Folder"
+  },
+  {
+   "description": "This will be appended at the end of the &lt;head&gt;",
+   "fieldname": "head_html",
+   "fieldtype": "Code",
+   "label": "Head HTML",
+   "options": "HTML"
+  },
+  {
+   "description": "This will be appended at the end of the &lt;body&gt;",
+   "fieldname": "body_html",
+   "fieldtype": "Code",
+   "label": "Body HTML",
+   "options": "HTML"
+  },
+  {
+   "default": "0",
+   "fieldname": "is_standard",
+   "fieldtype": "Check",
+   "label": "Is Standard",
+   "no_copy": 1
+  },
+  {
+   "depends_on": "is_standard",
+   "fieldname": "app",
+   "fieldtype": "Select",
+   "label": "App",
+   "mandatory_depends_on": "is_standard",
+   "no_copy": 1
+  },
+  {
+   "fieldname": "published_at",
+   "fieldtype": "Datetime",
+   "label": "Published At"
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-06-04 10:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Builder",
+ "name": "Builder Page",
+ "naming_rule": "By fieldname",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Website Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "show_title_field_in_link": 1,
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "page_title"
+}

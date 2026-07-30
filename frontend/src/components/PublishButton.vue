@@ -1,0 +1,81 @@
+<template>
+	<div class="flex items-center">
+		<Button
+			variant="solid"
+			:disabled="disabled"
+			@click="
+				() => {
+					publishing = true;
+					pageStore.publishPage().finally(() => (publishing = false));
+				}
+			"
+			class="border-0"
+			:class="{
+				'rounded-br-none rounded-tr-none': showDropdown,
+			}"
+			:loading="publishing">
+			{{ publishButtonLabel }}
+		</Button>
+		<Dropdown
+			v-if="showDropdown"
+			:options="[
+				{
+					label: 'Version History',
+					onClick: () => {
+						builderStore.showRightPanel = true;
+						builderStore.showVersionHistory = true;
+					},
+					icon: 'lucide-history',
+				},
+				{
+					label: 'Unpublish',
+					onClick: () => pageStore.unpublishPage(),
+					condition: () => Boolean(pageStore.activePage?.published),
+					icon: 'lucide-cloud-off',
+				},
+			]"
+			size="sm"
+			class="flex-1 [&>div>div>div]:w-full"
+			placement="right">
+			<template v-slot="{ open }">
+				<Button
+					variant="solid"
+					@click="open"
+					:disabled="Boolean(pageStore.activePage?.is_template) || builderStore.readOnlyMode"
+					icon="lucide-chevron-down"
+					class="!w-6 justify-start rounded-bl-none rounded-tl-none border-0 pr-0 text-xs"></Button>
+			</template>
+		</Dropdown>
+	</div>
+</template>
+<script lang="ts" setup>
+import useBuilderStore from "@/stores/builderStore";
+import useCanvasStore from "@/stores/canvasStore";
+import usePageStore from "@/stores/pageStore";
+import { Dropdown } from "frappe-ui";
+import { computed, ref } from "vue";
+
+defineProps<{
+	disabled?: boolean;
+}>();
+
+const pageStore = usePageStore();
+const canvasStore = useCanvasStore();
+const builderStore = useBuilderStore();
+
+const publishing = ref(false);
+const showDropdown = computed(() => {
+	return canvasStore.editingMode !== "fragment" && !pageStore.activePage?.is_template;
+});
+
+const publishButtonLabel = computed(() => {
+	if (
+		(pageStore.activePage?.draft_blocks && !pageStore.activePage?.published) ||
+		!pageStore.activePage?.draft_blocks
+	) {
+		return "Publish";
+	} else {
+		return "Publish Changes";
+	}
+});
+</script>

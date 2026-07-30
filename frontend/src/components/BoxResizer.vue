@@ -1,0 +1,268 @@
+<template>
+	<CursorTooltip v-if="resizing" :position="cursorPosition" :wide="!props.targetBlock.isText()">
+		<template v-if="props.targetBlock.isText()">{{ fontSize }}</template>
+		<template v-else>{{ targetWidth }} x {{ targetHeight }}</template>
+	</CursorTooltip>
+
+	<div
+		class="left-handle pointer-events-auto absolute bottom-0 left-[-6px] top-0 w-3 border-none bg-transparent"
+		:style="{ cursor: horizontalCursor }"
+		@mousedown.stop="(ev) => handleResize(ev, resizeDirections.left)" />
+	<div
+		class="right-handle pointer-events-auto absolute bottom-0 right-[-6px] top-0 w-3 border-none bg-transparent"
+		:style="{ cursor: horizontalCursor }"
+		@mousedown.stop="(ev) => handleResize(ev, resizeDirections.right)" />
+	<div
+		class="top-handle pointer-events-auto absolute left-0 right-0 top-[-6px] h-3 border-none bg-transparent"
+		:style="{ cursor: verticalCursor }"
+		@mousedown.stop="(ev) => handleResize(ev, resizeDirections.top)" />
+	<div
+		class="bottom-handle pointer-events-auto absolute bottom-[-6px] left-0 right-0 h-3 border-none bg-transparent"
+		:style="{ cursor: verticalCursor }"
+		@mousedown.stop="(ev) => handleResize(ev, resizeDirections.bottom)" />
+	<div
+		v-for="corner in visibleCorners"
+		:key="corner.name"
+		class="pointer-events-auto absolute h-[10px] w-[10px] rounded-full border-2 border-blue-400 bg-white before:absolute before:-inset-2 before:content-['']"
+		:class="[corner.positionClass, { 'border-purple-400': targetBlock.isExtendedFromComponent() }]"
+		:style="{ cursor: corner.cursor.value }"
+		v-show="!resizing"
+		@mousedown.stop.prevent="(ev) => handleResize(ev, corner)" />
+</template>
+<script setup lang="ts">
+import type Block from "@/block";
+import { useRotatedCursors } from "@/composables/useRotatedCursors";
+import useCanvasStore from "@/stores/canvasStore";
+import { startDrag } from "@/utils/cursor";
+import { getResizePositionDelta, toLocalDelta } from "@/utils/rotation";
+import type { ResizeDirection } from "@/utils/rotation";
+import { getNumberFromPx } from "@/utils/helpers";
+import { clamp } from "@vueuse/core";
+import { computed, inject, onMounted, ref, watch } from "vue";
+import guidesTracker from "../utils/guidesTracker";
+import CursorTooltip from "./CursorTooltip.vue";
+
+const canvasStore = useCanvasStore();
+const props = defineProps<{
+	targetBlock: Block;
+	target: HTMLElement | SVGElement;
+}>();
+
+const emit = defineEmits(["resizing"]);
+const resizing = ref(false);
+const cursorPosition = ref({ x: 0, y: 0 });
+let guides = null as unknown as ReturnType<typeof guidesTracker>;
+
+const canvasProps = inject("canvasProps") as CanvasProps;
+
+onMounted(() => {
+	guides = guidesTracker(props.target as HTMLElement, canvasProps);
+});
+
+// `rotation` also projects the resize axes, so pointer movement follows the rotated edges
+const { rotation, horizontalCursor, verticalCursor, cornerCursorNWSE, cornerCursorNESW } =
+	useRotatedCursors(
+		() => props.target as Element,
+		() => props.targetBlock,
+	);
+
+const resizeDirections = {
+	left: { horizontal: "left" },
+	right: { horizontal: "right" },
+	top: { vertical: "top" },
+	bottom: { vertical: "bottom" },
+} as const;
+
+const corners = [
+	{
+		name: "top-left",
+		horizontal: "left",
+		vertical: "top",
+		positionClass: "left-[-4px] top-[-4px]",
+		cursor: cornerCursorNWSE,
+	},
+	{
+		name: "top-right",
+		horizontal: "right",
+		vertical: "top",
+		positionClass: "right-[-4px] top-[-4px]",
+		cursor: cornerCursorNESW,
+	},
+	{
+		name: "bottom-left",
+		horizontal: "left",
+		vertical: "bottom",
+		positionClass: "bottom-[-4px] left-[-4px]",
+		cursor: cornerCursorNESW,
+	},
+	{
+		name: "bottom-right",
+		horizontal: "right",
+		vertical: "bottom",
+		positionClass: "bottom-[-4px] right-[-4px]",
+		cursor: cornerCursorNWSE,
+	},
+] as const;
+
+const visibleCorners = computed(() => (props.targetBlock.isText() ? corners.slice(-1) : corners));
+
+watch(resizing, () => {
+	if (resizing.value) {
+		if (canvasStore.activeCanvas) {
+			canvasStore.activeCanvas.history?.pause();
+			canvasStore.activeCanvas.resizingBlock = true;
+		}
+		emit("resizing", true);
+	} else {
+		if (canvasStore.activeCanvas) {
+			canvasStore.activeCanvas?.history?.resume(undefined, true, true);
+			canvasStore.activeCanvas.resizingBlock = false;
+		}
+		emit("resizing", false);
+	}
+});
+
+const targetWidth = computed(() => {
+	props.targetBlock.getStyle("width"); // to trigger reactivity
+	return Math.round(getNumberFromPx(getComputedStyle(props.target).getPropertyValue("width")));
+});
+
+const targetHeight = computed(() => {
+	props.targetBlock.getStyle("height"); // to trigger reactivity
+	return Math.round(getNumberFromPx(getComputedStyle(props.target).getPropertyValue("height")));
+});
+
+const fontSize = computed(() => {
+	props.targetBlock.getStyle("fontSize"); // to trigger reactivity
+	return Math.round(getNumberFromPx(getComputedStyle(props.target).getPropertyValue("font-size")));
+});
+
+// For the left/top side, the opposite edge is kept visually fixed by shifting top/left the same
+// amount the block grew (only meaningful for absolute/fixed blocks, which own their position).
+const handleResize = (ev: MouseEvent, { horizontal, vertical }: ResizeDirection) => {
+	const startX = ev.clientX;
+	const startY = ev.clientY;
+	const target = props.target as HTMLElement;
+	const startHeight = target.offsetHeight;
+	const startWidth = target.offsetWidth;
+	const startTop = target.offsetTop;
+	const startLeft = target.offsetLeft;
+	const ownRotation = parseFloat(getComputedStyle(target).rotate) || 0;
+	const blockStartWidth = props.targetBlock.getStyle("width") as string;
+	const blockStartHeight = props.targetBlock.getStyle("height") as string;
+	const startFontSize = fontSize.value || 0;
+	const canReposition = props.targetBlock.isMovable();
+	// pressing `esc` resetsnto startStyles
+	const startStyles = {
+		width: props.targetBlock.getStyle("width", null, true),
+		height: props.targetBlock.getStyle("height", null, true),
+		left: props.targetBlock.getStyle("left", null, true),
+		top: props.targetBlock.getStyle("top", null, true),
+		fontSize: props.targetBlock.getStyle("fontSize", null, true),
+	};
+
+	cursorPosition.value = { x: ev.clientX, y: ev.clientY };
+	resizing.value = true;
+	if (horizontal) guides.showX();
+	if (vertical) guides.showY();
+
+	startDrag({
+		cursor: window.getComputedStyle(ev.target as HTMLElement).cursor,
+		onMove: (mouseMoveEvent) => {
+			cursorPosition.value = { x: mouseMoveEvent.clientX, y: mouseMoveEvent.clientY };
+			const dx = (mouseMoveEvent.clientX - startX) / canvasProps.scale;
+			const dy = (mouseMoveEvent.clientY - startY) / canvasProps.scale;
+			const { x: localX, y: localY } = toLocalDelta(dx, dy, rotation.value);
+
+			if (props.targetBlock.isText() && !props.targetBlock.hasChildren()) {
+				const fontSizeMovement = vertical
+					? verticalMovement(vertical, localY)
+					: horizontalMovement(horizontal, localX);
+				return setFontSize(fontSizeMovement, startFontSize);
+			}
+
+			let widthMovement = horizontalMovement(horizontal, localX);
+			let heightMovement = verticalMovement(vertical, localY);
+			if (mouseMoveEvent.shiftKey && startWidth && startHeight) {
+				const aspectRatio = startWidth / startHeight;
+				if (horizontal) {
+					heightMovement = (startWidth + widthMovement) / aspectRatio - startHeight;
+				} else if (vertical) {
+					widthMovement = (startHeight + heightMovement) * aspectRatio - startWidth;
+				}
+			}
+
+			if (horizontal || (mouseMoveEvent.shiftKey && vertical)) {
+				setWidth(widthMovement, startWidth, blockStartWidth);
+			}
+			if (vertical || (mouseMoveEvent.shiftKey && horizontal)) {
+				setHeight(heightMovement, startHeight, blockStartHeight);
+			}
+
+			if (canReposition) {
+				const positionDelta = getResizePositionDelta(
+					widthMovement,
+					heightMovement,
+					{ horizontal, vertical },
+					ownRotation,
+				);
+				props.targetBlock.setStyle("left", `${Math.round(startLeft + positionDelta.x)}px`);
+				props.targetBlock.setStyle("top", `${Math.round(startTop + positionDelta.y)}px`);
+			}
+		},
+		onCancel: () => {
+			Object.entries(startStyles).forEach(([style, value]) => {
+				props.targetBlock.setStyle(style as styleProperty, value ?? null);
+			});
+		},
+		onEnd: () => {
+			resizing.value = false;
+			if (horizontal) guides.hideX();
+			if (vertical) guides.hideY();
+		},
+	});
+};
+
+const horizontalMovement = (direction: ResizeDirection["horizontal"], movement: number) => {
+	if (direction === "left") return -movement;
+	if (direction === "right") return movement;
+	return 0;
+};
+
+const verticalMovement = (direction: ResizeDirection["vertical"], movement: number) => {
+	if (direction === "top") return -movement;
+	if (direction === "bottom") return movement;
+	return 0;
+};
+
+const setWidth = (movementX: number, startWidth: number, blockStartWidth: string) => {
+	const finalWidth = Math.round(startWidth + movementX);
+	if (blockStartWidth?.includes("%")) {
+		const parentWidth = props.target.parentElement?.offsetWidth || 0;
+		const movementPercent = (movementX / parentWidth) * 100;
+		const startWidthPercent = (startWidth / parentWidth) * 100;
+		const finalWidthPercent = Math.abs(Math.round(startWidthPercent + movementPercent));
+		props.targetBlock.setStyle("width", `${finalWidthPercent}%`);
+	} else {
+		props.targetBlock.setStyle("width", `${finalWidth}px`);
+	}
+};
+
+const setHeight = (movementY: number, startHeight: number, blockStartHeight: string) => {
+	const finalHeight = Math.round(startHeight + movementY);
+	if (blockStartHeight?.includes("%")) {
+		const parentHeight = props.target.parentElement?.offsetHeight || 0;
+		const movementPercent = (movementY / parentHeight) * 100;
+		const startHeightPercent = (startHeight / parentHeight) * 100;
+		const finalHeightPercent = Math.abs(Math.round(startHeightPercent + movementPercent));
+		props.targetBlock.setStyle("height", `${finalHeightPercent}%`);
+	} else {
+		props.targetBlock.setStyle("height", `${finalHeight}px`);
+	}
+};
+
+const setFontSize = (movement: number, startFontSize: number) => {
+	const fontSize = clamp(Math.round(startFontSize + 0.5 * movement), 10, 300);
+	props.targetBlock.setStyle("fontSize", `${fontSize}px`);
+};
+</script>

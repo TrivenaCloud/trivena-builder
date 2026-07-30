@@ -1,0 +1,172 @@
+<template>
+	<div class="flex items-center justify-between gap-2">
+		<InputLabel
+			v-if="label"
+			:class="{
+				'cursor-ns-resize': enableSlider,
+				'w-1/3 min-w-[88px] shrink-0': type != 'checkbox',
+			}"
+			:title="label"
+			:description="description"
+			@mousedown="handleMouseDown">
+			{{ label }}
+		</InputLabel>
+		<BuilderInput
+			:class="{
+				'w-full': type != 'checkbox',
+			}"
+			:type="type"
+			:placeholder="placeholder"
+			:modelValue="modelValue"
+			:options="inputOptions"
+			v-if="type != 'autocomplete'"
+			@update:modelValue="handleChange"
+			:hideClearButton="hideClearButton"
+			@keydown.stop="handleKeyDown" />
+		<Autocomplete
+			v-if="type == 'autocomplete'"
+			ref="autocompleteRef"
+			:placeholder="placeholder ? String(placeholder) : undefined"
+			:modelValue="String(modelValue || '')"
+			:options="inputOptions"
+			:getOptions="getOptions"
+			@update:modelValue="handleChange"
+			:actionButton="actionButton"
+			:showInputAsOption="showInputAsOption"
+			:hideClearButton="hideClearButton"
+			class="w-full" />
+	</div>
+</template>
+<script setup lang="ts">
+import { extractNumberAndUnit } from "@/utils/helpers";
+import { isNumber } from "@tiptap/vue-3";
+import { computed, ref } from "vue";
+import Autocomplete from "./Autocomplete.vue";
+import InputLabel from "./InputLabel.vue";
+
+type Action = {
+	label: string;
+	handler: () => void;
+	icon: string;
+	component?: any;
+};
+
+const props = withDefaults(
+	defineProps<{
+		modelValue?: StyleValue;
+		label?: string;
+		description?: string;
+		type?: string;
+		unitOptions?: string[];
+		options?: any[];
+		enableSlider?: boolean;
+		changeFactor?: number;
+		minValue?: number;
+		maxValue?: number | null;
+		showInputAsOption?: boolean;
+		getOptions?: (filterString: string) => Promise<Option[]>;
+		actionButton?: Action;
+		placeholder?: StyleValue;
+		hideClearButton?: boolean;
+	}>(),
+	{
+		label: "",
+		description: "",
+		type: "text",
+		unitOptions: () => [],
+		options: () => [],
+		enableSlider: false,
+		changeFactor: 1,
+		minValue: 0,
+		maxValue: null,
+		showInputAsOption: false,
+		placeholder: "unset",
+		hideClearButton: false,
+	},
+);
+
+const emit = defineEmits(["update:modelValue"]);
+
+type Option = {
+	label: string;
+	value: string;
+};
+
+const inputOptions = computed(() => {
+	return (props.options || []).map((option) => {
+		if (typeof option === "string" || (typeof option === "number" && props.type === "autocomplete")) {
+			return {
+				label: option,
+				value: option,
+			};
+		}
+		return option;
+	}) as Option[];
+});
+
+// TODO: Refactor
+const handleChange = (value: string | number | null | { label: string; value: string }) => {
+	if (typeof value === "object" && value !== null && "value" in value) {
+		value = value.value;
+	}
+	if (value && typeof value === "string" && props.unitOptions.length) {
+		const { number, unit } = extractNumberAndUnit(value);
+		if (!unit && number) {
+			value = number + props.unitOptions[0];
+		}
+	}
+
+	emit("update:modelValue", value);
+};
+
+const handleMouseDown = (e: MouseEvent) => {
+	if (!props.enableSlider) {
+		return;
+	}
+	const { number } = extractNumberAndUnit(String(props.modelValue || ""));
+	const startY = e.clientY;
+	const startValue = Number(number);
+	const handleMouseMove = (e: MouseEvent) => {
+		let diff = (startY - e.clientY) * props.changeFactor;
+		diff = Math.round(diff);
+		incrementOrDecrement(diff, startValue);
+	};
+	const handleMouseUp = () => {
+		window.removeEventListener("mousemove", handleMouseMove);
+	};
+	window.addEventListener("mousemove", handleMouseMove);
+	window.addEventListener("mouseup", handleMouseUp, { once: true });
+};
+
+const handleKeyDown = (e: KeyboardEvent) => {
+	// Only numeric inputs (those with unit options or a slider) step via arrow keys.
+	const supportsArrowStepping = props.unitOptions.length > 0 || props.enableSlider;
+	if (!supportsArrowStepping) return;
+	if (e.key === "ArrowUp" || e.key === "ArrowDown") {
+		const step = e.key === "ArrowUp" ? 1 : -1;
+		incrementOrDecrement(step);
+		e.preventDefault();
+	}
+};
+
+const incrementOrDecrement = (step: number, initialValue: null | number = null) => {
+	const value = String(props.modelValue || "");
+	const { number, unit: existingUnit } = extractNumberAndUnit(value);
+	const unit =
+		existingUnit || (props.unitOptions.length && !isNaN(Number(number)) ? props.unitOptions[0] : "");
+	let newValue = (initialValue != null ? Number(initialValue) : Number(number)) + step;
+	if (isNumber(props.minValue) && newValue <= props.minValue) {
+		newValue = props.minValue;
+	}
+	if (isNumber(props.maxValue) && newValue >= props.maxValue) {
+		newValue = props.maxValue;
+	}
+	handleChange(newValue + "" + unit);
+};
+
+const autocompleteRef = ref<InstanceType<typeof Autocomplete> | null>(null);
+
+defineExpose({
+	refreshOptions: () => autocompleteRef.value?.refreshOptions(),
+});
+</script>
