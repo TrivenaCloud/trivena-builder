@@ -16,7 +16,7 @@ const pinia = createPinia();
 app.use(router);
 app.use(FrappeUI);
 app.use(pinia);
-app.use(telemetryPlugin, { app_name: "builder" });
+app.use(telemetryPlugin, { app_name: "trivena_builder" });
 
 window.name = "frappe-builder";
 app.config.globalProperties.window = window;

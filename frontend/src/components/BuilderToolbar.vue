@@ -267,7 +267,7 @@ const duplicateToEdit = async () => {
 		})
 			.submit({ template_page: pageStore.activePage?.name })
 			.then((newPageName: string) => {
-				router.push({ name: "builder", params: { pageId: newPageName }, force: true });
+				router.push({ name: "trivena_builder", params: { pageId: newPageName }, force: true });
 				pageStore.setPage(newPageName);
 			}),
 		{

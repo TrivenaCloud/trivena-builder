@@ -179,7 +179,7 @@ onMounted(() => {
 const createBlankPage = (source: "gallery" | "template_group" = "gallery") => {
 	capture("builder_blank_page_selected", { source });
 	showTemplatesDialog.value = false;
-	router.push({ name: "builder", params: { pageId: "new" } });
+	router.push({ name: "trivena_builder", params: { pageId: "new" } });
 };
 
 const creatingPage = ref(false);
@@ -200,7 +200,7 @@ const useTemplate = (page: TemplatePageSummary) => {
 				source: page.live_url ? "hub" : "local",
 			});
 			showTemplatesDialog.value = false;
-			router.push({ name: "builder", params: { pageId: newPageName }, force: true });
+			router.push({ name: "trivena_builder", params: { pageId: newPageName }, force: true });
 			pageStore.setPage(newPageName);
 		});
 	toast.promise(promise, {
@@ -247,6 +247,6 @@ const importAll = () => {
 
 const editTemplate = (page: TemplatePageSummary) => {
 	showTemplatesDialog.value = false;
-	router.push({ name: "builder", params: { pageId: page.name } });
+	router.push({ name: "trivena_builder", params: { pageId: page.name } });
 };
 </script>

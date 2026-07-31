@@ -28,7 +28,7 @@ const validateVisit = async function (
 		if (hasPermission === null) {
 			try {
 				const response = await createResource({
-					url: "frappe.client.has_permission",
+					url: "trivena.client.has_permission",
 				}).submit({
 					doctype: "Builder Page",
 					docname: "",
@@ -72,7 +72,7 @@ const routes = [
 	},
 	{
 		path: "/page/:pageId",
-		name: "builder",
+		name: "trivena_builder",
 		beforeEnter: validateVisit,
 		component: () => import("@/pages/PageBuilder.vue"),
 	},

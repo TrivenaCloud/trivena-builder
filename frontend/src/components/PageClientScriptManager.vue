@@ -312,7 +312,7 @@ const updateScriptName = async (newName: string, script: attachedScript) => {
 		return script;
 	}) as unknown as BuilderClientScript[];
 	return createResource({
-		url: "frappe.client.rename_doc",
+		url: "trivena.client.rename_doc",
 	})
 		.submit({
 			doctype: "Builder Client Script",

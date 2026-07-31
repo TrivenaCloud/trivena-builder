@@ -2,7 +2,7 @@
 	<div class="flex h-screen flex-col items-center bg-surface-base py-2">
 		<div class="space-between relative flex w-full items-center justify-between px-3 py-1">
 			<router-link
-				:to="{ name: 'builder', params: { pageId: route.params.pageId || 'new' } }"
+				:to="{ name: 'trivena_builder', params: { pageId: route.params.pageId || 'new' } }"
 				class="flex w-fit text-sm text-ink-gray-7 hover:text-ink-gray-9">
 				<span class="lucide-arrow-left mr-4 h-4 w-4 cursor-pointer" aria-hidden="true" />
 				Back to builder

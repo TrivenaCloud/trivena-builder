@@ -230,7 +230,7 @@ function selectNode(node: Node) {
 
 function activateNode(node: Node) {
 	if (node.page?.page_name) {
-		router.push({ name: "builder", params: { pageId: node.page.page_name } });
+		router.push({ name: "trivena_builder", params: { pageId: node.page.page_name } });
 	} else if (node.hasChildren) {
 		toggleNode(node);
 	}

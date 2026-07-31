@@ -48,7 +48,7 @@
 										:style="{
 											background: modelValue
 												? resolvedColor
-												: `url(/assets/builder/images/color-circle.png) center / contain`,
+												: `url(/assets/trivena_builder/images/color-circle.png) center / contain`,
 										}"></div>
 								</template>
 							</Autocomplete>

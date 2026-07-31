@@ -106,11 +106,11 @@ jobs:
       - name: Site Setup
         run: |
           cd ~/frappe-bench/
-          bench --site builder.test execute frappe.utils.install.complete_setup_wizard
-          bench --site builder.test execute frappe.tests.ui_test_helpers.create_test_user
+          bench --site builder.test execute trivena.utils.install.complete_setup_wizard
+          bench --site builder.test execute trivena.tests.ui_test_helpers.create_test_user
 
       - name: UI Tests
-        run: cd ~/frappe-bench/apps/builder/frontend && yarn test
+        run: cd ~/frappe-bench/apps/trivena_builder/frontend && yarn test
 
       - name: Stop server
         run: |

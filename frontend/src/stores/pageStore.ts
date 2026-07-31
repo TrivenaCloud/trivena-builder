@@ -154,7 +154,7 @@ const usePageStore = defineStore("pageStore", {
 					loading: "Duplicating page",
 					success: async (page: BuilderPage) => {
 						// load page and refresh
-						router.push({ name: "builder", params: { pageId: page.page_name } }).then(() => {
+						router.push({ name: "trivena_builder", params: { pageId: page.page_name } }).then(() => {
 							router.go(0);
 						});
 						return "Page duplicated";

@@ -20,7 +20,7 @@
 							onError: (e: Event) => {
 								const img = e.target as HTMLImageElement | null;
 								if (img) {
-									img.src = '/assets/builder/images/fallback-favicon.ico';
+									img.src = '/assets/trivena_builder/images/fallback-favicon.ico';
 								}
 							},
 						});

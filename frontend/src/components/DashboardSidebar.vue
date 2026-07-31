@@ -225,7 +225,7 @@ const setFolderActive = (folderName: string) => {
 const renameFolder = async (newFolderName: string, targetFolder: BuilderProjectFolder) => {
 	if (!newFolderName) return;
 	return createResource({
-		url: "frappe.client.rename_doc",
+		url: "trivena.client.rename_doc",
 	})
 		.submit({
 			doctype: "Builder Project Folder",

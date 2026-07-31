@@ -421,7 +421,7 @@ onActivated(async () => {
 watch(
 	route,
 	(to, from) => {
-		if (to.name === "builder" && to.params.pageId === "new") {
+		if (to.name === "trivena_builder" && to.params.pageId === "new") {
 			const pageInfo = {
 				page_title: "My Page",
 				draft_blocks: [getRootBlockTemplate()],
@@ -430,7 +430,7 @@ watch(
 				pageInfo["project_folder"] = builderStore.activeFolder;
 			}
 			webPages.insert.submit(pageInfo).then((data: BuilderPage) => {
-				router.push({ name: "builder", params: { pageId: data.name }, force: true });
+				router.push({ name: "trivena_builder", params: { pageId: data.name }, force: true });
 				pageStore.setPage(data.name);
 			});
 		}

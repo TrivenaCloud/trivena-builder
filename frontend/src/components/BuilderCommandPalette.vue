@@ -34,7 +34,7 @@ const route = useRoute();
 const router = useRouter();
 const showShortcuts = inject<() => void>("showShortcuts", () => {});
 
-const isBuilderRoute = computed(() => route.name === "builder");
+const isBuilderRoute = computed(() => route.name === "trivena_builder");
 
 useShortcut({
 	key: "k",
@@ -370,8 +370,8 @@ function trackRecentPage(pageName: string) {
 
 function navigateToPage(pageName: string) {
 	trackRecentPage(pageName);
-	const isOnBuilder = router.currentRoute.value.name === "builder";
-	router.push({ name: "builder", params: { pageId: pageName } });
+	const isOnBuilder = router.currentRoute.value.name === "trivena_builder";
+	router.push({ name: "trivena_builder", params: { pageId: pageName } });
 	if (isOnBuilder) {
 		pageStore.setPage(pageName);
 	}

@@ -30,7 +30,7 @@
 				<div
 					class="flex items-center justify-center rounded border border-outline-gray-1 bg-surface-gray-2 px-20 py-5">
 					<img
-						:src="builderSettings.doc?.favicon || '/assets/builder/images/frappe_black.png'"
+						:src="builderSettings.doc?.favicon || '/assets/trivena_builder/images/frappe_black.png'"
 						alt="Site Favicon"
 						class="size-6 rounded" />
 				</div>

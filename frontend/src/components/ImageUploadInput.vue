@@ -35,7 +35,7 @@
 							</BuilderInput>
 							<img
 								v-if="labelPosition === 'left'"
-								:src="currentImageURL || '/assets/builder/images/fallback.png'"
+								:src="currentImageURL || '/assets/trivena_builder/images/fallback.png'"
 								alt=""
 								@click="togglePopover"
 								class="absolute bottom-[6px] left-2 h-4 w-4 rounded border border-outline-gray-3 shadow-sm"
@@ -49,7 +49,7 @@
 					<div class="rounded-lg bg-surface-base p-3 shadow-lg">
 						<div class="group relative flex items-center justify-center overflow-hidden rounded">
 							<img
-								:src="currentImageURL || '/assets/builder/images/fallback.png'"
+								:src="currentImageURL || '/assets/trivena_builder/images/fallback.png'"
 								alt=""
 								class="image-preview relative h-24 w-48 cursor-pointer bg-surface-gray-2"
 								:style="{

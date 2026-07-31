@@ -4,9 +4,9 @@
 	font-display: swap;
 	font-style: normal;
 	src:
-		url("/assets/builder/fonts/Inter/Inter.var.woff2?v=3.19") format("woff2-variations"),
-		url("/assets/builder/fonts/Inter/Inter.var.woff2?v=3.19") format("woff2");
-	src: url("/assets/builder/fonts/Inter/Inter.var.woff2?v=3.19") format("woff2") tech("variations");
+		url("/assets/trivena_builder/fonts/Inter/Inter.var.woff2?v=3.19") format("woff2-variations"),
+		url("/assets/trivena_builder/fonts/Inter/Inter.var.woff2?v=3.19") format("woff2");
+	src: url("/assets/trivena_builder/fonts/Inter/Inter.var.woff2?v=3.19") format("woff2") tech("variations");
 }
 
 @font-face {
@@ -15,9 +15,9 @@
 	font-display: swap;
 	font-style: italic;
 	src:
-		url("/assets/builder/fonts/Inter/Inter-Italic.var.woff2?v=3.19") format("woff2-variations"),
-		url("/assets/builder/fonts/Inter/Inter-Italic.var.woff2?v=3.19") format("woff2");
-	src: url("/assets/builder/fonts/Inter/Inter-Italic.var.woff2?v=3.19") format("woff2") tech("variations");
+		url("/assets/trivena_builder/fonts/Inter/Inter-Italic.var.woff2?v=3.19") format("woff2-variations"),
+		url("/assets/trivena_builder/fonts/Inter/Inter-Italic.var.woff2?v=3.19") format("woff2");
+	src: url("/assets/trivena_builder/fonts/Inter/Inter-Italic.var.woff2?v=3.19") format("woff2") tech("variations");
 }
 @tailwind base;
 

@@ -12,7 +12,7 @@ const dontCompleteIn = [
 const BOOST_INDEX = 99;
 
 // Create completion source for custom objects
-// Currently only two levels of nesting is supported, eg: frappe.session.user
+// Currently only two levels of nesting is supported, eg: trivena.session.user
 export default function customPythonCompletions(
 	context: any,
 	customCompletions: any,

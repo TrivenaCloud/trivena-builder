@@ -123,15 +123,15 @@ const pendingInvites = createResource({
 });
 
 const inviteResource = createResource({
-	url: "frappe.core.api.user_invitation.invite_by_email",
+	url: "trivena.core.api.user_invitation.invite_by_email",
 });
 
 const cancelResource = createResource({
-	url: "frappe.core.api.user_invitation.cancel_invitation",
+	url: "trivena.core.api.user_invitation.cancel_invitation",
 });
 
 const resendResource = createResource({
-	url: "frappe.core.api.user_invitation.resend_invitation",
+	url: "trivena.core.api.user_invitation.resend_invitation",
 });
 
 const matchesSearch = (...values: (string | undefined)[]) => {
@@ -169,7 +169,7 @@ const sendInvites = async () => {
 			emails,
 			roles: ["Website Manager"],
 			redirect_to_path: builderPath,
-			app_name: "builder",
+			app_name: "trivena_builder",
 		});
 		if (res.invited_emails.length) {
 			toast.success(`Invitation sent to ${res.invited_emails.join(", ")}`);
@@ -193,7 +193,7 @@ const sendInvites = async () => {
 
 const resendInvite = async (invite: PendingInvite) => {
 	try {
-		await resendResource.submit({ name: invite.name, app_name: "builder" });
+		await resendResource.submit({ name: invite.name, app_name: "trivena_builder" });
 		toast.success(`Invitation resent to ${invite.email}`);
 	} catch (error) {
 		toast.error(errorMessage(error));
@@ -203,7 +203,7 @@ const resendInvite = async (invite: PendingInvite) => {
 const cancelInvite = async (invite: PendingInvite) => {
 	if (!(await confirm(`Are you sure you want to cancel the invitation to ${invite.email}?`))) return;
 	try {
-		await cancelResource.submit({ name: invite.name, app_name: "builder" });
+		await cancelResource.submit({ name: invite.name, app_name: "trivena_builder" });
 		toast.success("Invitation cancelled");
 		pendingInvites.fetch();
 	} catch (error) {

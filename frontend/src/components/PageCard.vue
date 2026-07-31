@@ -1,5 +1,5 @@
 <template>
-	<router-link :to="{ name: 'builder', params: { pageId: page.page_name } }">
+	<router-link :to="{ name: 'trivena_builder', params: { pageId: page.page_name } }">
 		<div
 			class="group relative flex w-full cursor-pointer flex-col gap-2 rounded-2xl p-3 hover:bg-surface-elevation-1"
 			:class="{
@@ -9,7 +9,7 @@
 				width="250"
 				height="140"
 				:src="page.meta_image || page.preview"
-				onerror="this.src='/assets/builder/images/fallback.png'"
+				onerror="this.src='/assets/trivena_builder/images/fallback.png'"
 				class="aspect-video w-full overflow-hidden rounded-md object-cover shadow dark:border dark:border-outline-gray-1" />
 			<div class="flex items-center justify-between border-outline-gray-2">
 				<span class="inline-block max-w-[160px]">

@@ -6,7 +6,7 @@
 					<router-link
 						target="_blank"
 						:to="{
-							name: 'builder',
+							name: 'trivena_builder',
 							params: {
 								pageId: page.name,
 							},

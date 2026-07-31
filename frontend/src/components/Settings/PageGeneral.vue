@@ -70,7 +70,7 @@
 								:src="
 									pageStore.activePage?.favicon ||
 									builderSettings.doc?.favicon ||
-									'/assets/builder/images/frappe_black.png'
+									'/assets/trivena_builder/images/frappe_black.png'
 								"
 								alt="Favicon"
 								class="size-6 rounded" />
@@ -209,7 +209,7 @@ const folderOptions = computed(() => {
 });
 
 const installedAppsResource = createResource({
-	url: "frappe.core.doctype.module_def.module_def.get_installed_apps",
+	url: "trivena.core.doctype.module_def.module_def.get_installed_apps",
 	cache: "installed_apps",
 	auto: true,
 	transform: (data: string) => {

@@ -63,7 +63,7 @@ async function processBatch() {
 	try {
 		const res = (await createResource({
 			method: "POST",
-			url: `/api/method/frappe.desk.form.load.get_user_info_for_viewers`,
+			url: `/api/method/trivena.desk.form.load.get_user_info_for_viewers`,
 		}).submit({
 			users: JSON.stringify(emailsToFetch),
 		})) as { [key: string]: UserInfo };

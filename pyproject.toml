@@ -1,5 +1,5 @@
 [project]
-name = "builder"
+name = "trivena_builder"
 authors = [
     { name = "Trivena Cloud", email = "cloud@tynktech.nl"}
 ]
@@ -18,7 +18,7 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://frappe.io/builder"
+Homepage = "https://trivena.io/builder"
 Repository = "https://github.com/frappe/builder.git"
 "Bug Reports" = "https://github.com/frappe/builder/issues"
 
@@ -71,7 +71,7 @@ ignore = [
     "W191", # indentation contains tabs
     "RUF001", # string contains ambiguous unicode character
 ]
-typing-modules = ["frappe.types.DF"]
+typing-modules = ["trivena_framework.types.DF"]
 
 [tool.ruff.format]
 quote-style = "double"
